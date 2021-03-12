@@ -54,20 +54,25 @@ fn distance_for_99b_7r9() {
 fn run_test(file: &str, release: Time) -> OptimizationResult {
     env_logger::try_init().ok();
 
-    let fixes = file.lines()
+    let fixes = file
+        .lines()
         .filter(|l| l.starts_with('B'))
-        .filter_map(|line| igc::records::BRecord::parse(&line).ok()
-            .map_or(None, |record| {
-                if record.timestamp.seconds_since_midnight() >= release.seconds_since_midnight() {
-                    Some(Point {
-                        latitude: record.pos.lat.into(),
-                        longitude: record.pos.lon.into(),
-                        altitude: record.pressure_alt,
-                    })
-                } else {
-                    None
-                }
-            }))
+        .filter_map(|line| {
+            igc::records::BRecord::parse(&line)
+                .ok()
+                .map_or(None, |record| {
+                    if record.timestamp.seconds_since_midnight() >= release.seconds_since_midnight()
+                    {
+                        Some(Point {
+                            latitude: record.pos.lat.into(),
+                            longitude: record.pos.lon.into(),
+                            altitude: record.pressure_alt,
+                        })
+                    } else {
+                        None
+                    }
+                })
+        })
         .collect::<Vec<_>>();
 
     olc::optimize(&fixes).unwrap()

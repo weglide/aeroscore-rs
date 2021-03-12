@@ -1,7 +1,7 @@
-pub mod olc;
 pub mod flat;
 pub mod haversine;
-mod point;
+pub mod olc;
 mod parallel;
+mod point;
 
 pub use crate::point::Point;
