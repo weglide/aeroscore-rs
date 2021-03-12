@@ -4,8 +4,8 @@ extern crate criterion;
 extern crate aeroscore;
 extern crate igc;
 
-use criterion::Criterion;
 use aeroscore::haversine::haversine_distance;
+use criterion::Criterion;
 
 struct Point {
     latitude: f32,
@@ -25,9 +25,17 @@ impl aeroscore::Point for Point {
 }
 
 fn criterion_benchmark(c: &mut Criterion) {
-    let point1 = Point { latitude: 51.301389, longitude: 6.953333 };
-    let point2 = Point { latitude: 50.823194, longitude: 6.186389 };
-    c.bench_function("haversine", |b| b.iter(|| haversine_distance(&point1, &point2)));
+    let point1 = Point {
+        latitude: 51.301389,
+        longitude: 6.953333,
+    };
+    let point2 = Point {
+        latitude: 50.823194,
+        longitude: 6.186389,
+    };
+    c.bench_function("haversine", |b| {
+        b.iter(|| haversine_distance(&point1, &point2))
+    });
 }
 
 criterion_group!(benches, criterion_benchmark);

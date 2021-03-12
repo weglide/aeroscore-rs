@@ -4,8 +4,8 @@ extern crate criterion;
 extern crate aeroscore;
 extern crate igc;
 
-use criterion::Criterion;
 use aeroscore::olc;
+use criterion::Criterion;
 
 struct Point {
     latitude: f32,
@@ -26,20 +26,25 @@ impl aeroscore::Point for Point {
 }
 
 fn criterion_benchmark(c: &mut Criterion) {
-    c.bench_function("olc_classic", |b| b.iter(|| {
-        let fixes = include_str!("../tests/fixtures/2017-08-14-fla-6ng-01.igc")
-            .lines()
-            .filter(|l| l.starts_with('B'))
-            .filter_map(|line| igc::records::BRecord::parse(&line).ok()
-                .map(|record| Point {
-                    latitude: record.pos.lat.into(),
-                    longitude: record.pos.lon.into(),
-                    altitude: record.pressure_alt,
-                }))
-            .collect::<Vec<_>>();
+    c.bench_function("olc_classic", |b| {
+        b.iter(|| {
+            let fixes = include_str!("../tests/fixtures/2017-08-14-fla-6ng-01.igc")
+                .lines()
+                .filter(|l| l.starts_with('B'))
+                .filter_map(|line| {
+                    igc::records::BRecord::parse(&line)
+                        .ok()
+                        .map(|record| Point {
+                            latitude: record.pos.lat.into(),
+                            longitude: record.pos.lon.into(),
+                            altitude: record.pressure_alt,
+                        })
+                })
+                .collect::<Vec<_>>();
 
-        olc::optimize(&fixes).unwrap()
-    }));
+            olc::optimize(&fixes).unwrap()
+        })
+    });
 }
 
 criterion_group! {

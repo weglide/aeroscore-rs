@@ -2,9 +2,9 @@ extern crate aeroscore;
 extern crate igc;
 
 use std::env;
+use std::fs::File;
 use std::io::prelude::*;
 use std::io::BufReader;
-use std::fs::File;
 
 use aeroscore::olc;
 
@@ -67,13 +67,16 @@ fn analyze(path: &str) {
         .lines()
         .filter_map(|l| l.ok())
         .filter(|l| l.starts_with('B'))
-        .filter_map(|line| igc::records::BRecord::parse(&line).ok()
-            .map(|record| Point {
-                time: record.timestamp,
-                latitude: record.pos.lat.into(),
-                longitude: record.pos.lon.into(),
-                altitude: record.pressure_alt,
-            }))
+        .filter_map(|line| {
+            igc::records::BRecord::parse(&line)
+                .ok()
+                .map(|record| Point {
+                    time: record.timestamp,
+                    latitude: record.pos.lat.into(),
+                    longitude: record.pos.lon.into(),
+                    altitude: record.pressure_alt,
+                })
+        })
         .collect::<Vec<_>>();
 
     println!("num points: {}", fixes.len());

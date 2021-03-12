@@ -3,10 +3,10 @@ use flat_projection::FlatPoint;
 use log::{debug, trace};
 use ord_subset::OrdVar;
 
-use crate::Point;
 use crate::flat::to_flat_points;
 use crate::haversine::haversine_distance;
 use crate::parallel::*;
+use crate::Point;
 
 const LEGS: usize = 6;
 
@@ -30,40 +30,67 @@ pub fn optimize<T: Point>(route: &[T]) -> Result<OptimizationResult, Error> {
 
     debug!("Searching for best valid solution");
     let mut best_valid = graph.find_best_valid_solution(&route);
-    debug!("-- New best solution: {:.3} km -> {:?}", calculate_distance(route, &best_valid.path), best_valid.path);
+    debug!(
+        "-- New best solution: {:.3} km -> {:?}",
+        calculate_distance(route, &best_valid.path),
+        best_valid.path
+    );
 
     debug!("Searching for potentially better solutions");
-    let mut start_candidates: Vec<_> = graph.g[LEGS - 1].iter()
+    let mut start_candidates: Vec<_> = graph.g[LEGS - 1]
+        .iter()
         .enumerate()
         .filter(|(_, cell)| cell.distance > best_valid.distance)
-        .map(|(start_index, cell)| StartCandidate { distance: cell.distance, start_index })
+        .map(|(start_index, cell)| StartCandidate {
+            distance: cell.distance,
+            start_index,
+        })
         .collect();
 
     start_candidates.sort_by_key(|it| OrdVar::new_checked(it.distance));
-    debug!("{} potentially better start points found", start_candidates.len());
+    debug!(
+        "{} potentially better start points found",
+        start_candidates.len()
+    );
 
     while let Some(candidate) = start_candidates.pop() {
         let finish_altitude = route[candidate.start_index].altitude();
 
-        debug!("Calculating solution graph with start point at index {}", candidate.start_index);
+        debug!(
+            "Calculating solution graph with start point at index {}",
+            candidate.start_index
+        );
         let candidate_graph = Graph::for_start_index(finish_altitude, &dist_matrix, route);
         let best_valid_for_candidate = candidate_graph.find_best_valid_solution(&route);
         if best_valid_for_candidate.distance > best_valid.distance {
             best_valid = best_valid_for_candidate;
-            debug!("-- New best solution: {:.3} km -> {:?}", calculate_distance(route, &best_valid.path), best_valid.path);
+            debug!(
+                "-- New best solution: {:.3} km -> {:?}",
+                calculate_distance(route, &best_valid.path),
+                best_valid.path
+            );
 
             start_candidates.retain(|it| it.distance > best_valid.distance);
         } else {
-            debug!("Discarding solution with {:.3} km", calculate_distance(route, &best_valid_for_candidate.path));
+            debug!(
+                "Discarding solution with {:.3} km",
+                calculate_distance(route, &best_valid_for_candidate.path)
+            );
         }
 
-        debug!("{} potentially better start points left", start_candidates.len());
+        debug!(
+            "{} potentially better start points left",
+            start_candidates.len()
+        );
     }
 
     let distance = calculate_distance(route, &best_valid.path);
     debug!("Solution: {:?} ({:.3} km)", best_valid.path, distance);
 
-    Ok(OptimizationResult { distance, path: best_valid.path })
+    Ok(OptimizationResult {
+        distance,
+        path: best_valid.path,
+    })
 }
 
 #[derive(Debug)]
@@ -78,9 +105,7 @@ struct StartCandidate {
 pub fn half_dist_matrix(flat_points: &[FlatPoint<f32>]) -> Vec<Vec<f32>> {
     opt_par_iter(flat_points)
         .enumerate()
-        .map(|(i, p1)| flat_points[i..].iter()
-            .map(|p2| p1.distance(p2))
-            .collect()) 
+        .map(|(i, p1)| flat_points[i..].iter().map(|p2| p1.distance(p2)).collect())
         .collect()
 }
 
@@ -102,11 +127,17 @@ impl Graph {
 
         let layer: Vec<GraphCell> = opt_par_iter(dist_matrix)
             .enumerate()
-            .map(|(tp_index, distances)| distances.iter()
-                .enumerate()
-                .map(|(start_index, &distance)| GraphCell { prev_index: start_index+tp_index, distance })
-                .max_by_key(|cell| OrdVar::new_checked(cell.distance))
-                .unwrap())
+            .map(|(tp_index, distances)| {
+                distances
+                    .iter()
+                    .enumerate()
+                    .map(|(start_index, &distance)| GraphCell {
+                        prev_index: start_index + tp_index,
+                        distance,
+                    })
+                    .max_by_key(|cell| OrdVar::new_checked(cell.distance))
+                    .unwrap()
+            })
             .collect();
 
         graph.push(layer);
@@ -118,12 +149,16 @@ impl Graph {
             let layer: Vec<GraphCell> = opt_par_iter(dist_matrix)
                 .enumerate()
                 .map(|(tp_index, distances)| {
-                    distances.iter()
+                    distances
+                        .iter()
                         .zip(last_layer.iter().skip(tp_index))
                         .enumerate()
                         .map(|(prev_index, (&leg_dist, last_layer_cell))| {
                             let distance = last_layer_cell.distance + leg_dist;
-                            GraphCell { prev_index: prev_index+tp_index, distance }
+                            GraphCell {
+                                prev_index: prev_index + tp_index,
+                                distance,
+                            }
                         })
                         .max_by_key(|cell| OrdVar::new_checked(cell.distance))
                         .unwrap()
@@ -136,7 +171,11 @@ impl Graph {
         Graph { g: graph }
     }
 
-    fn for_start_index<T: Point>(start_altitude: i16, dist_matrix: &[Vec<f32>], points: &[T]) -> Self {
+    fn for_start_index<T: Point>(
+        start_altitude: i16,
+        dist_matrix: &[Vec<f32>],
+        points: &[T],
+    ) -> Self {
         let mut graph: Vec<Vec<GraphCell>> = Vec::with_capacity(LEGS);
 
         trace!("-- Analyzing leg #{}", 6);
@@ -147,19 +186,28 @@ impl Graph {
 
         let layer: Vec<GraphCell> = opt_par_iter(dist_matrix)
             .enumerate()
-            .map(|(tp_index, distances)| distances.iter()
-                .enumerate()
-                .map(|(finish_index, &distance)| {
-                    let finish = &points[finish_index+tp_index];
-                    let altitude_delta = start_altitude - finish.altitude();
-                    if altitude_delta <= 1000  {
-                        GraphCell { prev_index: finish_index+tp_index, distance: distance }
-                    } else {
-                        GraphCell { prev_index: finish_index+tp_index, distance: distance - 100_000.0}
-                    }
-                })
-                .max_by_key(|cell| OrdVar::new_checked(cell.distance))
-                .unwrap())
+            .map(|(tp_index, distances)| {
+                distances
+                    .iter()
+                    .enumerate()
+                    .map(|(finish_index, &distance)| {
+                        let finish = &points[finish_index + tp_index];
+                        let altitude_delta = start_altitude - finish.altitude();
+                        if altitude_delta <= 1000 {
+                            GraphCell {
+                                prev_index: finish_index + tp_index,
+                                distance,
+                            }
+                        } else {
+                            GraphCell {
+                                prev_index: finish_index + tp_index,
+                                distance: distance - 100_000.0,
+                            }
+                        }
+                    })
+                    .max_by_key(|cell| OrdVar::new_checked(cell.distance))
+                    .unwrap()
+            })
             .collect();
         // trace!("Layer: {:?}", layer);
         graph.push(layer);
@@ -188,12 +236,16 @@ impl Graph {
             let layer: Vec<GraphCell> = opt_par_iter(dist_matrix)
                 .enumerate()
                 .map(|(tp_index, distances)| {
-                    distances.iter()
+                    distances
+                        .iter()
                         .zip(last_layer.iter().skip(tp_index))
                         .enumerate()
                         .map(|(prev_index, (&leg_dist, last_layer_cell))| {
                             let distance = last_layer_cell.distance + leg_dist;
-                            GraphCell { prev_index: prev_index+tp_index, distance }
+                            GraphCell {
+                                prev_index: prev_index + tp_index,
+                                distance,
+                            }
                         })
                         .max_by_key(|cell| OrdVar::new_checked(cell.distance))
                         .unwrap()
@@ -212,7 +264,8 @@ impl Graph {
 
         let offset = points.len() - last_graph_row.len();
 
-        last_graph_row.iter()
+        last_graph_row
+            .iter()
             .enumerate()
             .filter_map(|(index, cell)| {
                 let iter = GraphIterator {
@@ -231,8 +284,11 @@ impl Graph {
                 let start = &points[start_index];
                 let finish = &points[finish_index];
                 let altitude_delta = start.altitude() - finish.altitude();
-                if altitude_delta <= 1000  {
-                    Some(OptimizationResult { distance: cell.distance, path })
+                if altitude_delta <= 1000 {
+                    Some(OptimizationResult {
+                        distance: cell.distance,
+                        path,
+                    })
                 } else {
                     None
                 }
@@ -252,7 +308,7 @@ impl Iterator for GraphIterator<'_> {
     type Item = usize;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.next.is_none() { return None; }
+        self.next?;
 
         let (layer, index) = self.next.unwrap();
         self.next = if layer == 0 {
@@ -270,8 +326,9 @@ impl Iterator for GraphIterator<'_> {
 /// Calculates the total task distance (via haversine algorithm) from
 /// the original `route` and the array of indices
 ///
-fn calculate_distance<T: Point>(points: &[T], path: &Path) -> f32 {
-    path.iter().zip(path.iter().skip(1))
+fn calculate_distance<T: Point>(points: &[T], path: &[usize]) -> f32 {
+    path.iter()
+        .zip(path.iter().skip(1))
         .map(|(i1, i2)| (&points[*i1], &points[*i2]))
         .map(|(fix1, fix2)| haversine_distance(fix1, fix2))
         .sum()
